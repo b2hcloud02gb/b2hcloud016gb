@@ -1,46 +1,51 @@
-‎name: Mobile RDP
-‎
-‎on:
-‎  workflow_dispatch:
-‎
-‎jobs:
-‎  rdp:
-‎    runs-on: windows-latest
-‎    timeout-minutes: 360
-‎
-‎    steps:
-‎    - name: Enable RDP
-‎      run: |
-‎        net user rdpuser Pass123! /add
-‎        net localgroup administrators rdpuser /add
-‎        net localgroup "Remote Desktop Users" rdpuser /add
-‎        reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
-‎        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-‎        Restart-Service TermService -Force
-‎
-‎    - name: Install Tailscale
-‎      run: |
-‎        Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi -OutFile ts.msi
-‎        Start-Process msiexec.exe -ArgumentList "/i ts.msi /quiet /norestart" -Wait
-‎
-‎    - name: Connect Tailscale
-‎      run: |
-‎        & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }}
-‎
-‎    - name: Show RDP Info
-‎      run: |
-‎        $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-‎        Write-Host "RDP IP: $ip"
-‎        Write-Host "Username: rdpuser"
-‎        Write-Host "Password: Pass123!"
-‎
-‎    - name: Keep Alive
-‎      run: Start-Sleep -Seconds 21600
-‎‎          # Keep runner active indefinitely (or until manually cancelled)
-‎          while ($true) {
-‎              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-‎              Start-Sleep -Seconds 300
-‎          }
-‎
-‎
-‎
+name: RDP with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 350   # MUST be < 360
+
+    steps:
+      - name: Enable RDP
+        shell: powershell
+        run: |
+          Set-ItemProperty `
+            -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+            -Name "fDenyTSConnections" -Value 0
+
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Create RDP User
+        shell: powershell
+        run: |
+          net user rdpuser P@ssw0rd123! /add
+          net localgroup administrators rdpuser /add
+
+      - name: Install Tailscale
+        shell: powershell
+        run: |
+          choco install tailscale -y
+
+      - name: Start Tailscale
+        shell: powershell
+        run: |
+          tailscale up `
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+            --hostname=gh-rdp `
+            --accept-dns=false `
+            --accept-routes=false
+
+      - name: Show Tailscale IP
+        shell: powershell
+        run: |
+          tailscale ip -4
+
+      - name: Keep RDP alive
+        shell: powershell
+        run: |
+          Write-Host "RDP is ready. This job will stop automatically."
+          Start-Sleep -Seconds 21000
+
