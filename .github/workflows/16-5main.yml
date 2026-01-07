@@ -1,0 +1,36 @@
+name: RDP with Tailscale
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    timeout-minutes: 355  # MUST be under 360 (6h)
+
+    steps:
+      - name: Enable RDP
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Create RDP user
+        run: |
+          net user rdpuser StrongPassword123! /add
+          net localgroup administrators rdpuser /add
+
+      - name: Install Tailscale
+        run: |
+          choco install tailscale -y
+
+      - name: Start Tailscale
+        run: |
+          tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-rdp --accept-routes
+
+      - name: Show Tailscale IP
+        run: tailscale ip -4
+
+      - name: Keep session alive (max 5h 55m)
+        run: |
+          Write-Host "RDP ready. Job will end automatically."
+          Start-Sleep -Seconds 21300
